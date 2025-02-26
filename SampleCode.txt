@@ -1,0 +1,1560 @@
+// src/App.js
+import React from 'react';
+import FlowBuilder from './components/FlowBuilder';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>No-Code Automation Flow Builder</h1>
+      </header>
+      <main>
+        <FlowBuilder />
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+// src/components/FlowBuilder.js
+import React, { useState, useRef, useCallback } from 'react';
+import ReactFlow, {
+  ReactFlowProvider,
+  addEdge,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import Sidebar from './Sidebar';
+import PropertyPanel from './PropertyPanel';
+import CustomNode from './nodes/CustomNode';
+import TriggerNode from './nodes/TriggerNode';
+import ActionNode from './nodes/ActionNode';
+import ConditionNode from './nodes/ConditionNode';
+import { v4 as uuidv4 } from 'uuid';
+import ApiPanel from './ApiPanel';
+import './FlowBuilder.css';
+
+// Define node types for our custom nodes
+const nodeTypes = {
+  customNode: CustomNode,
+  triggerNode: TriggerNode,
+  actionNode: ActionNode,
+  conditionNode: ConditionNode,
+};
+
+const FlowBuilder = () => {
+  // React Flow states
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // Selected elements
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [showApiPanel, setShowApiPanel] = useState(false);
+  
+  // DOM reference for the flow wrapper
+  const reactFlowWrapper = useRef(null);
+  
+  // Store the React Flow instance
+  const [reactFlowInstance, setReactFlowInstance] = useState(null);
+
+  // Handle connecting nodes
+  const onConnect = useCallback((params) => {
+    // Create a unique id for the new edge
+    const newEdge = {
+      ...params,
+      id: `e-${uuidv4()}`,
+      animated: true,
+      style: { stroke: '#555' },
+    };
+    setEdges((eds) => addEdge(newEdge, eds));
+  }, [setEdges]);
+
+  // Set up the React Flow instance when ready
+  const onInit = useCallback((instance) => {
+    setReactFlowInstance(instance);
+  }, []);
+
+  // Handle node selection
+  const onNodeClick = useCallback((event, node) => {
+    setSelectedNode(node);
+  }, []);
+
+  // Handle edge selection
+  const onEdgeClick = useCallback((event, edge) => {
+    // Could implement edge properties editing here
+  }, []);
+
+  // Handle pane click (deselect elements)
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null);
+  }, []);
+
+  // Handle dropping a new node onto the canvas
+  const onDragOver = useCallback((event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  // Handle the drop event to create a new node
+  const onDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+
+      // Get the node type from the drag data
+      const nodeType = event.dataTransfer.getData('application/reactflow/type');
+      const nodeName = event.dataTransfer.getData('application/reactflow/name');
+      
+      // Exit if we're not dropping a node type
+      if (!nodeType) {
+        return;
+      }
+
+      // Get the position of the drop relative to the flow container
+      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
+      const position = reactFlowInstance.project({
+        x: event.clientX - reactFlowBounds.left,
+        y: event.clientY - reactFlowBounds.top,
+      });
+
+      // Create a new node with default properties
+      const newNode = {
+        id: `node-${uuidv4()}`,
+        type: nodeType,
+        position,
+        data: { 
+          label: nodeName || 'New Node',
+          properties: {},
+        },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [reactFlowInstance, setNodes]
+  );
+
+  // Update node properties
+  const updateNodeProperties = useCallback((nodeId, properties) => {
+    setNodes((nodes) => 
+      nodes.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              properties,
+            },
+          };
+        }
+        return node;
+      })
+    );
+  }, [setNodes]);
+
+  // Generate API from flow
+  const generateApi = useCallback(() => {
+    // Show the API panel
+    setShowApiPanel(true);
+    
+    // In a real implementation, this would send the flow data to the backend
+    // for API generation and retrieve the generated API details
+    console.log('Flow data for API generation:', { nodes, edges });
+  }, [nodes, edges]);
+
+  // Save the flow to backend
+  const saveFlow = useCallback(() => {
+    const flowData = {
+      nodes,
+      edges,
+    };
+    console.log('Saving flow:', flowData);
+    // In a real implementation, this would call an API to save the flow
+    alert('Flow saved successfully! (simulated)');
+  }, [nodes, edges]);
+
+  return (
+    <div className="flow-builder-container">
+      <Sidebar />
+      <div className="flow-wrapper" ref={reactFlowWrapper}>
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onInit={onInit}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            nodeTypes={nodeTypes}
+            fitView
+          >
+            <Background color="#aaa" gap={16} />
+            <Controls />
+            <MiniMap
+              nodeStrokeColor={(n) => {
+                return '#000000';
+              }}
+              nodeColor={(n) => {
+                return n.type === 'triggerNode' ? '#6ede87' : 
+                       n.type === 'actionNode' ? '#6865A5' :
+                       n.type === 'conditionNode' ? '#ff8a65' : '#00BFFF';
+              }}
+            />
+          </ReactFlow>
+        </ReactFlowProvider>
+        
+        <div className="action-buttons">
+          <button onClick={saveFlow} className="save-button">Save Flow</button>
+          <button onClick={generateApi} className="generate-api-button">Generate API</button>
+        </div>
+      </div>
+      
+      {selectedNode && (
+        <PropertyPanel 
+          node={selectedNode} 
+          updateNodeProperties={(properties) => 
+            updateNodeProperties(selectedNode.id, properties)
+          }
+        />
+      )}
+      
+      {showApiPanel && (
+        <ApiPanel 
+          flowData={{ nodes, edges }}
+          onClose={() => setShowApiPanel(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+export default FlowBuilder;
+
+// src/components/Sidebar.js
+import React from 'react';
+import './Sidebar.css';
+
+const nodeCategories = [
+  {
+    title: 'Triggers',
+    items: [
+      { type: 'triggerNode', name: 'Webhook Trigger', description: 'Start flow from an HTTP request' },
+      { type: 'triggerNode', name: 'Schedule Trigger', description: 'Run flow at scheduled times' },
+      { type: 'triggerNode', name: 'Database Trigger', description: 'Trigger on database changes' },
+    ],
+  },
+  {
+    title: 'Actions',
+    items: [
+      { type: 'actionNode', name: 'HTTP Request', description: 'Make external API calls' },
+      { type: 'actionNode', name: 'Database Query', description: 'Run database operations' },
+      { type: 'actionNode', name: 'Send Email', description: 'Send email notifications' },
+      { type: 'actionNode', name: 'Transform Data', description: 'Transform data between steps' },
+    ],
+  },
+  {
+    title: 'Logic',
+    items: [
+      { type: 'conditionNode', name: 'Condition', description: 'Add conditional branching' },
+      { type: 'conditionNode', name: 'Switch', description: 'Multi-way branching based on value' },
+      { type: 'conditionNode', name: 'Loop', description: 'Iterate over data collections' },
+    ],
+  },
+];
+
+const Sidebar = () => {
+  // Handle drag start for a node
+  const onDragStart = (event, nodeType, nodeName) => {
+    event.dataTransfer.setData('application/reactflow/type', nodeType);
+    event.dataTransfer.setData('application/reactflow/name', nodeName);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  return (
+    <div className="sidebar">
+      <div className="sidebar-header">
+        <h3>Components</h3>
+      </div>
+      <div className="sidebar-content">
+        {nodeCategories.map((category) => (
+          <div key={category.title} className="component-category">
+            <h4>{category.title}</h4>
+            <div className="component-list">
+              {category.items.map((item) => (
+                <div
+                  key={item.name}
+                  className={`component-item ${item.type}`}
+                  draggable
+                  onDragStart={(event) => onDragStart(event, item.type, item.name)}
+                >
+                  <div className="component-name">{item.name}</div>
+                  <div className="component-desc">{item.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default Sidebar;
+
+// src/components/PropertyPanel.js
+import React, { useState, useEffect } from 'react';
+import './PropertyPanel.css';
+
+const PropertyPanel = ({ node, updateNodeProperties }) => {
+  const [properties, setProperties] = useState({});
+
+  // Initialize properties from node data
+  useEffect(() => {
+    setProperties(node.data.properties || {});
+  }, [node]);
+
+  // Generate property fields based on node type
+  const getPropertyFields = () => {
+    // Different node types have different property fields
+    switch (node.type) {
+      case 'triggerNode':
+        return [
+          { id: 'endpoint', label: 'Endpoint Path', type: 'text', placeholder: '/api/trigger' },
+          { id: 'method', label: 'HTTP Method', type: 'select', options: ['GET', 'POST', 'PUT', 'DELETE'] },
+          { id: 'authentication', label: 'Authentication', type: 'select', options: ['None', 'API Key', 'JWT', 'OAuth2'] },
+        ];
+      case 'actionNode':
+        if (node.data.label === 'HTTP Request') {
+          return [
+            { id: 'url', label: 'URL', type: 'text', placeholder: 'https://api.example.com/endpoint' },
+            { id: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'DELETE'] },
+            { id: 'headers', label: 'Headers', type: 'json', placeholder: '{"Content-Type": "application/json"}' },
+            { id: 'body', label: 'Body', type: 'json', placeholder: '{"key": "value"}' },
+          ];
+        }
+        if (node.data.label === 'Database Query') {
+          return [
+            { id: 'connection', label: 'Connection', type: 'select', options: ['Default Database', 'External DB'] },
+            { id: 'query', label: 'Query', type: 'textarea', placeholder: 'SELECT * FROM users WHERE id = {{id}}' },
+            { id: 'parameters', label: 'Parameters', type: 'json', placeholder: '{"id": "{{input.userId}}"}' },
+          ];
+        }
+        // Default action properties
+        return [
+          { id: 'inputMapping', label: 'Input Mapping', type: 'json', placeholder: '{"key": "{{source.value}}"}' },
+          { id: 'outputMapping', label: 'Output Mapping', type: 'json', placeholder: '{"result": "{{output.value}}"}' },
+        ];
+      case 'conditionNode':
+        return [
+          { id: 'condition', label: 'Condition', type: 'text', placeholder: '{{input.value}} > 10' },
+          { id: 'trueLabel', label: 'True Label', type: 'text', placeholder: 'Yes' },
+          { id: 'falseLabel', label: 'False Label', type: 'text', placeholder: 'No' },
+        ];
+      default:
+        return [
+          { id: 'name', label: 'Name', type: 'text', placeholder: 'My Node' },
+          { id: 'description', label: 'Description', type: 'textarea', placeholder: 'Node description...' },
+        ];
+    }
+  };
+
+  // Handle property changes
+  const handlePropertyChange = (propertyId, value) => {
+    const newProperties = {
+      ...properties,
+      [propertyId]: value
+    };
+    setProperties(newProperties);
+    updateNodeProperties(newProperties);
+  };
+
+  // Render a property field based on its type
+  const renderPropertyField = (field) => {
+    const value = properties[field.id] || '';
+    
+    switch (field.type) {
+      case 'text':
+        return (
+          <input
+            type="text"
+            value={value}
+            placeholder={field.placeholder}
+            onChange={(e) => handlePropertyChange(field.id, e.target.value)}
+          />
+        );
+      case 'textarea':
+        return (
+          <textarea
+            value={value}
+            placeholder={field.placeholder}
+            onChange={(e) => handlePropertyChange(field.id, e.target.value)}
+          />
+        );
+      case 'select':
+        return (
+          <select
+            value={value}
+            onChange={(e) => handlePropertyChange(field.id, e.target.value)}
+          >
+            <option value="">Select...</option>
+            {field.options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        );
+      case 'json':
+        return (
+          <textarea
+            value={typeof value === 'object' ? JSON.stringify(value, null, 2) : value}
+            placeholder={field.placeholder}
+            onChange={(e) => {
+              try {
+                // Try to parse as JSON if possible
+                const jsonValue = JSON.parse(e.target.value);
+                handlePropertyChange(field.id, jsonValue);
+              } catch (err) {
+                // Otherwise store as string
+                handlePropertyChange(field.id, e.target.value);
+              }
+            }}
+          />
+        );
+      default:
+        return (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => handlePropertyChange(field.id, e.target.value)}
+          />
+        );
+    }
+  };
+
+  return (
+    <div className="property-panel">
+      <div className="panel-header">
+        <h3>Properties: {node.data.label}</h3>
+      </div>
+      <div className="panel-content">
+        <div className="property-form">
+          {getPropertyFields().map((field) => (
+            <div key={field.id} className="property-field">
+              <label>{field.label}</label>
+              {renderPropertyField(field)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PropertyPanel;
+
+// src/components/ApiPanel.js
+import React, { useState, useEffect } from 'react';
+import './ApiPanel.css';
+
+const ApiPanel = ({ flowData, onClose }) => {
+  const [apiSpec, setApiSpec] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('endpoints');
+
+  // Simulate API generation process
+  useEffect(() => {
+    // In a real implementation, this would be an API call to the backend
+    setTimeout(() => {
+      // Generate a mock API specification based on the flow data
+      const generatedApiSpec = generateMockApiSpec(flowData);
+      setApiSpec(generatedApiSpec);
+      setIsLoading(false);
+    }, 1000);
+  }, [flowData]);
+
+  // Mock API specification generator
+  const generateMockApiSpec = (flowData) => {
+    // Find trigger nodes which become API endpoints
+    const triggerNodes = flowData.nodes.filter(
+      (node) => node.type === 'triggerNode'
+    );
+
+    const endpoints = triggerNodes.map((node) => {
+      const properties = node.data.properties || {};
+      return {
+        path: properties.endpoint || `/api/flow/${node.id}`,
+        method: properties.method || 'POST',
+        description: `Endpoint for ${node.data.label}`,
+        requestSchema: {
+          type: 'object',
+          properties: {
+            input: {
+              type: 'object',
+              properties: {
+                param1: { type: 'string' },
+                param2: { type: 'number' },
+              },
+            },
+          },
+        },
+        responseSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'object' },
+          },
+        },
+      };
+    });
+
+    return {
+      name: 'Generated Flow API',
+      version: '1.0.0',
+      baseUrl: 'https://api.example.com',
+      endpoints,
+      testUrl: 'https://test.example.com/api',
+    };
+  };
+
+  // Generate code snippet for testing the API
+  const generateCodeSnippet = (endpoint) => {
+    return `// JavaScript fetch example
+fetch("${apiSpec.baseUrl}${endpoint.path}", {
+  method: "${endpoint.method}",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer YOUR_API_KEY"
+  },
+  body: JSON.stringify({
+    "input": {
+      "param1": "value1",
+      "param2": 42
+    }
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data))
+.catch(error => console.error("Error:", error));`;
+  };
+
+  // Render loading state
+  if (isLoading) {
+    return (
+      <div className="api-panel">
+        <div className="panel-header">
+          <h3>Generating API...</h3>
+          <button className="close-button" onClick={onClose}>×</button>
+        </div>
+        <div className="panel-content loading">
+          <div className="spinner"></div>
+          <p>Processing flow and generating API endpoints...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="api-panel">
+      <div className="panel-header">
+        <h3>Generated API</h3>
+        <button className="close-button" onClick={onClose}>×</button>
+      </div>
+      
+      <div className="panel-tabs">
+        <button 
+          className={activeTab === 'endpoints' ? 'active' : ''} 
+          onClick={() => setActiveTab('endpoints')}
+        >
+          Endpoints
+        </button>
+        <button 
+          className={activeTab === 'testing' ? 'active' : ''} 
+          onClick={() => setActiveTab('testing')}
+        >
+          Testing
+        </button>
+        <button 
+          className={activeTab === 'documentation' ? 'active' : ''} 
+          onClick={() => setActiveTab('documentation')}
+        >
+          Documentation
+        </button>
+      </div>
+      
+      <div className="panel-content">
+        {activeTab === 'endpoints' && (
+          <div className="endpoints-tab">
+            <div className="api-info">
+              <p><strong>API Name:</strong> {apiSpec.name}</p>
+              <p><strong>Version:</strong> {apiSpec.version}</p>
+              <p><strong>Base URL:</strong> {apiSpec.baseUrl}</p>
+            </div>
+            
+            <h4>Available Endpoints:</h4>
+            <div className="endpoints-list">
+              {apiSpec.endpoints.map((endpoint, index) => (
+                <div key={index} className="endpoint-item">
+                  <div className="endpoint-header">
+                    <span className={`method-badge ${endpoint.method.toLowerCase()}`}>
+                      {endpoint.method}
+                    </span>
+                    <span className="endpoint-path">{endpoint.path}</span>
+                  </div>
+                  <div className="endpoint-details">
+                    <p>{endpoint.description}</p>
+                    <div className="schemas">
+                      <div className="schema">
+                        <h5>Request Schema:</h5>
+                        <pre>{JSON.stringify(endpoint.requestSchema, null, 2)}</pre>
+                      </div>
+                      <div className="schema">
+                        <h5>Response Schema:</h5>
+                        <pre>{JSON.stringify(endpoint.responseSchema, null, 2)}</pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'testing' && (
+          <div className="testing-tab">
+            <div className="test-form">
+              <h4>Test API Endpoint</h4>
+              <div className="form-group">
+                <label>Endpoint:</label>
+                <select defaultValue={apiSpec.endpoints[0]?.path}>
+                  {apiSpec.endpoints.map((endpoint, index) => (
+                    <option key={index} value={endpoint.path}>
+                      {endpoint.method} {endpoint.path}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>Request Body:</label>
+                <textarea 
+                  defaultValue={JSON.stringify({
+                    input: {
+                      param1: "test value",
+                      param2: 42
+                    }
+                  }, null, 2)} 
+                  rows="6"
+                ></textarea>
+              </div>
+              
+              <div className="form-group">
+                <label>Headers:</label>
+                <textarea 
+                  defaultValue={JSON.stringify({
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer API_KEY"
+                  }, null, 2)} 
+                  rows="4"
+                ></textarea>
+              </div>
+              
+              <button className="test-button">Send Request</button>
+              
+              <div className="response-section">
+                <h4>Response:</h4>
+                <pre className="response-box">
+                  {JSON.stringify({
+                    success: true,
+                    data: {
+                      id: "123456",
+                      status: "processed",
+                      result: {
+                        value1: "response data",
+                        value2: 100
+                      }
+                    }
+                  }, null, 2)}
+                </pre>
+              </div>
+            </div>
+            
+            <div className="code-snippets">
+              <h4>Code Snippet:</h4>
+              <pre className="code-box">
+                {generateCodeSnippet(apiSpec.endpoints[0])}
+              </pre>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'documentation' && (
+          <div className="documentation-tab">
+            <h4>API Documentation</h4>
+            <p>
+              This documentation describes the API automatically generated from your flow.
+              You can integrate with this API using any programming language that supports HTTP requests.
+            </p>
+            
+            <h5>Authentication</h5>
+            <p>
+              All API requests require authentication. You can use your API key in the Authorization header:
+            </p>
+            <pre>Authorization: Bearer YOUR_API_KEY</pre>
+            
+            <h5>Error Handling</h5>
+            <p>
+              The API uses standard HTTP status codes to indicate success or failure:
+            </p>
+            <ul>
+              <li>200 - Success</li>
+              <li>400 - Bad Request</li>
+              <li>401 - Unauthorized</li>
+              <li>404 - Not Found</li>
+              <li>500 - Server Error</li>
+            </ul>
+            
+            <h5>Endpoints</h5>
+            {apiSpec.endpoints.map((endpoint, index) => (
+              <div key={index} className="doc-endpoint">
+                <h6>
+                  <span className={`method-badge ${endpoint.method.toLowerCase()}`}>
+                    {endpoint.method}
+                  </span>
+                  {endpoint.path}
+                </h6>
+                <p>{endpoint.description}</p>
+                <div className="doc-section">
+                  <h6>Request Parameters:</h6>
+                  <pre>{JSON.stringify(endpoint.requestSchema, null, 2)}</pre>
+                </div>
+                <div className="doc-section">
+                  <h6>Response Format:</h6>
+                  <pre>{JSON.stringify(endpoint.responseSchema, null, 2)}</pre>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ApiPanel;
+
+// src/components/nodes/CustomNode.js
+import React, { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import './CustomNode.css';
+
+const CustomNode = memo(({ id, data, selected }) => {
+  return (
+    <div className={`custom-node ${selected ? 'selected' : ''}`}>
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{ background: '#555' }}
+      />
+      <div className="custom-node-content">
+        <div className="node-header">
+          <div className="node-title">{data.label}</div>
+        </div>
+        <div className="node-body">
+          {Object.entries(data.properties || {}).length > 0 ? (
+            <div className="properties-summary">
+              {Object.entries(data.properties).map(([key, value]) => (
+                <div key={key} className="property-item">
+                  <span className="property-key">{key}:</span>
+                  <span className="property-value">
+                    {typeof value === 'object' 
+                      ? '[Object]' 
+                      : String(value).length > 15 
+                        ? String(value).substring(0, 15) + '...' 
+                        : value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="no-properties">No properties configured</div>
+          )}
+        </div>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ background: '#555' }}
+      />
+    </div>
+  );
+});
+
+export default CustomNode;
+
+// src/components/nodes/TriggerNode.js
+import React, { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import './CustomNode.css';
+
+const TriggerNode = memo(({ id, data, selected }) => {
+  return (
+    <div className={`custom-node trigger-node ${selected ? 'selected' : ''}`}>
+      <div className="custom-node-content">
+        <div className="node-header trigger-header">
+          <div className="node-title">{data.label}</div>
+        </div>
+        <div className="node-body">
+          {Object.entries(data.properties || {}).length > 0 ? (
+            <div className="properties-summary">
+              {Object.entries(data.properties).map(([key, value]) => (
+                <div key={key} className="property-item">
+                  <span className="property-key">{key}:</span>
+                  <span className="property-value">
+                    {typeof value === 'object' 
+                      ? '[Object]' 
+                      : String(value).length > 15 
+                        ? String(value).substring(0, 15) + '...' 
+                        : value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="no-properties">Configure trigger properties</div>
+          )}
+        </div>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ background: '#555' }}
+      />
+    </div>
+  );
+});
+
+export default TriggerNode;
+
+// src/components/nodes/ActionNode.js
+import React, { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import './CustomNode.css';
+
+const ActionNode = memo(({ id, data, selected }) => {
+  return (
+    <div className={`custom-node action-node ${selected ? 'selected' : ''}`}>
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{ background: '#555' }}
+      />
+      <div className="custom-node-content">
+        <div className="node-header action-header">
+          <div className="node-title">{data.label}</div>
+        </div>
+        <div className="node-body">
+          {Object.entries(data.properties || {}).length > 0 ? (
+            <div className="properties-summary">
+              {Object.entries(data.properties).map(([key, value]) => (
+                <div key={key} className="property-item">
+                  <span className="property-key">{key}:</span>
+                  <span className="property-value">
+                    {typeof value === 'object' 
+                      ? '[Object]' 
+                      : String(value).length > 15 
+                        ? String(value).substring(0, 15) + '...' 
+                        : value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="no-properties">Configure action properties</div>
+          )}
+        </div>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ background: '#555' }}
+      />
+    </div>
+  );
+});
+
+export default ActionNode;
+
+// src/components/nodes/ConditionNode.js
+import React, { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import './CustomNode.css';
+
+const ConditionNode = memo(({ id, data, selected }) => {
+  return (
+    <div className={`custom-node condition-node ${selected ? 'selected' : ''}`}>
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{ background: '#555' }}
+      />
+      <div className="custom-node-content">
+        <div className="node-header condition-header">
+          <div className="node-title">{data.label}</div>
+          // src/components/nodes/ConditionNode.js (continued)
+        </div>
+        <div className="node-body">
+          {data.properties?.condition ? (
+            <div className="condition-expression">
+              <span className="condition-text">{data.properties.condition}</span>
+            </div>
+          ) : (
+            <div className="no-properties">Set condition expression</div>
+          )}
+          <div className="branch-labels">
+            <span className="true-label">
+              {data.properties?.trueLabel || 'True'}
+            </span>
+            <span className="false-label">
+              {data.properties?.falseLabel || 'False'}
+            </span>
+          </div>
+        </div>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="true"
+        style={{ background: '#4CAF50', left: '25%' }}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="false"
+        style={{ background: '#F44336', left: '75%' }}
+      />
+    </div>
+  );
+});
+
+export default ConditionNode;
+
+// src/App.css
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.App {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 10px 20px;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.App-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// src/components/FlowBuilder.css
+.flow-builder-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+.flow-wrapper {
+  flex: 1;
+  height: 100%;
+  position: relative;
+}
+
+.action-buttons {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+
+.save-button,
+.generate-api-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.save-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.generate-api-button {
+  background-color: #2196f3;
+  color: white;
+}
+
+// src/components/Sidebar.css
+.sidebar {
+  width: 250px;
+  background-color: #f5f5f5;
+  border-right: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.component-category {
+  margin-bottom: 15px;
+}
+
+.component-category h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.component-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.component-item {
+  padding: 10px;
+  border-radius: 4px;
+  background-color: white;
+  border: 1px solid #ddd;
+  cursor: grab;
+  transition: all 0.2s;
+}
+
+.component-item:hover {
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.component-name {
+  font-weight: bold;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.component-desc {
+  font-size: 12px;
+  color: #666;
+}
+
+.triggerNode {
+  border-left: 4px solid #6ede87;
+}
+
+.actionNode {
+  border-left: 4px solid #6865A5;
+}
+
+.conditionNode {
+  border-left: 4px solid #ff8a65;
+}
+
+// src/components/PropertyPanel.css
+.property-panel {
+  width: 300px;
+  background-color: #f5f5f5;
+  border-left: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 15px;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+.property-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.property-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.property-field label {
+  font-size: 13px;
+  font-weight: bold;
+  color: #333;
+}
+
+.property-field input,
+.property-field select,
+.property-field textarea {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.property-field textarea {
+  min-height: 80px;
+  font-family: monospace;
+}
+
+// src/components/nodes/CustomNode.css
+.custom-node {
+  padding: 10px;
+  border-radius: 5px;
+  background: white;
+  border: 1px solid #ddd;
+  min-width: 150px;
+  font-size: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.custom-node.selected {
+  box-shadow: 0 0 0 2px #1a192b;
+}
+
+.custom-node-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.node-header {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 8px;
+}
+
+.trigger-header {
+  border-bottom-color: #6ede87;
+}
+
+.action-header {
+  border-bottom-color: #6865A5;
+}
+
+.condition-header {
+  border-bottom-color: #ff8a65;
+}
+
+.node-title {
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.node-body {
+  font-size: 12px;
+}
+
+.properties-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.property-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.property-key {
+  font-weight: bold;
+  color: #666;
+}
+
+.property-value {
+  color: #333;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.no-properties {
+  color: #999;
+  font-style: italic;
+  text-align: center;
+  padding: 5px 0;
+}
+
+.trigger-node {
+  border-top: 4px solid #6ede87;
+}
+
+.action-node {
+  border-top: 4px solid #6865A5;
+}
+
+.condition-node {
+  border-top: 4px solid #ff8a65;
+}
+
+.condition-expression {
+  background: #f5f5f5;
+  padding: 5px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.branch-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+
+.true-label {
+  color: #4CAF50;
+  font-weight: bold;
+}
+
+.false-label {
+  color: #F44336;
+  font-weight: bold;
+}
+
+// src/components/ApiPanel.css
+.api-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  max-width: 800px;
+  max-height: 80vh;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+}
+
+.panel-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+}
+
+.panel-tabs button {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 3px solid transparent;
+}
+
+.panel-tabs button.active {
+  border-bottom-color: #2196f3;
+  font-weight: bold;
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.panel-content.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: #2196f3;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.api-info {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 5px;
+}
+
+.endpoints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.endpoint-item {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.endpoint-header {
+  padding: 10px 15px;
+  background-color: #f9f9f9;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.method-badge {
+  padding: 3px 8px;
+  border-radius: 3px;
+  color: white;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.method-badge.get {
+  background-color: #4CAF50;
+}
+
+.method-badge.post {
+  background-color: #2196F3;
+}
+
+.method-badge.put {
+  background-color: #FF9800;
+}
+
+.method-badge.delete {
+  background-color: #F44336;
+}
+
+.endpoint-path {
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.endpoint-details {
+  padding: 15px;
+}
+
+.schemas {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.schema {
+  flex: 1;
+}
+
+.schema h5 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.schema pre {
+  background-color: #f5f5f5;
+  padding: 10px;
+  border-radius: 5px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.test-form {
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.test-button {
+  padding: 8px 16px;
+  background-color: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.response-section {
+  margin-top: 20px;
+}
+
+.response-box,
+.code-box {
+  background-color: #f5f5f5;
+  padding: 15px;
+  border-radius: 5px;
+  overflow: auto;
+  font-family: monospace;
+  font-size: 12px;
+  min-height: 100px;
+  max-height: 200px;
+}
+
+.documentation-tab h5 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+.documentation-tab p,
+.documentation-tab ul {
+  margin-bottom: 15px;
+}
+
+.documentation-tab ul {
+  padding-left: 20px;
+}
+
+.doc-endpoint {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.doc-section {
+  margin-top: 15px;
+}
+
+.doc-section h6 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+// Main index.js file
+// src/index.js
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+// src/index.css
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
